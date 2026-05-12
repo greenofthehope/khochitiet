@@ -92,7 +92,16 @@
   .modal-close { background: none; border: none; color: white;
     font-size: 28px; cursor: pointer; padding: 0 8px; }
   #reader { flex: 1; }
-  .modal-hint { padding: 14px; text-align: center; color: white; font-size: 13px; }
+  /* Override style khung quét của html5-qrcode để to và đẹp hơn */
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
+  #reader__scan_region { background: transparent !important; }
+  .modal-foot { padding: 14px; display: flex; justify-content: space-between; align-items: center;
+    color: white; gap: 12px; }
+  .modal-hint { flex: 1; text-align: center; font-size: 13px; opacity: .9; }
+  .torch-btn { display: none; width: 50px; height: 50px; border-radius: 50%;
+    background: rgba(255,255,255,.15); color: white; border: 2px solid rgba(255,255,255,.4);
+    font-size: 20px; cursor: pointer; align-items: center; justify-content: center; }
+  .torch-btn.on { background: var(--accent); color: #1a1a1a; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -121,7 +130,10 @@
     <button class="modal-close" id="closeScan">×</button>
   </div>
   <div id="reader"></div>
-  <div class="modal-hint">Đưa mã vạch / QR vào khung hình</div>
+  <div class="modal-foot">
+    <div class="modal-hint">Đưa mã vạch / QR vào khung hình</div>
+    <button class="torch-btn" id="torchBtn" aria-label="Đèn pin">🔦</button>
+  </div>
 </div>
 
 <script>
@@ -331,25 +343,134 @@ searchInput.addEventListener("keydown", e => {
 const scanModal = document.getElementById("scanModal");
 const scanBtn = document.getElementById("scanBtn");
 const closeScan = document.getElementById("closeScan");
+const torchBtn = document.getElementById("torchBtn");
 let scanner = null;
+let currentTrack = null;
+let torchOn = false;
+
+// Format ưu tiên - chỉ scan các loại nhãn SAP/kho hay dùng để tăng tốc
+const PREFERRED_FORMATS = [
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+];
+
+// Responsive qrbox - to hơn = dễ quét hơn
+function getQrBoxSize(viewportWidth, viewportHeight) {
+  const minDim = Math.min(viewportWidth, viewportHeight);
+  const size = Math.floor(minDim * 0.75);
+  return { width: size, height: Math.floor(size * 0.6) };
+}
 
 scanBtn.addEventListener("click", async () => {
   scanModal.classList.add("open");
-  if (!scanner) scanner = new Html5Qrcode("reader");
+
+  if (!scanner) {
+    scanner = new Html5Qrcode("reader", {
+      formatsToSupport: PREFERRED_FORMATS,
+      // Bật BarcodeDetector API native - nhanh hơn ZXing JS 5-10 lần
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      verbose: false,
+    });
+  }
+
   try {
     await scanner.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 150 } },
-      decoded => {
-        searchInput.value = decoded;
-        renderResults(search(decoded));
-        closeScannerModal();
+      {
+        fps: 25,                          // tăng từ 10 lên 25
+        qrbox: getQrBoxSize,              // vùng quét lớn, responsive
+        aspectRatio: 1.0,
+        disableFlip: false,               // cho phép quét cả mã bị mirror
+        videoConstraints: {
+          facingMode: "environment",
+          width: { ideal: 1920 },         // Full HD nếu camera hỗ trợ
+          height: { ideal: 1080 },
+          // focusMode auto nếu device hỗ trợ
+          advanced: [{ focusMode: "continuous" }]
+        }
       },
-      () => {}
+      onScanSuccess,
+      () => {}                            // bỏ qua mọi lỗi mỗi frame
     );
+
+    // Lấy track của camera để bật flash sau này
+    currentTrack = scanner.getRunningTrackCameraCapabilities
+      ? scanner.getRunningTrackCameraCapabilities()
+      : null;
+
+    // Hiện nút flash nếu device hỗ trợ
+    setTimeout(checkTorchSupport, 500);
   } catch (e) {
     alert("Không mở được camera: " + e.message);
     scanModal.classList.remove("open");
+  }
+});
+
+function onScanSuccess(decoded) {
+  // Phản hồi vật lý: rung điện thoại + âm beep ngắn
+  if (navigator.vibrate) navigator.vibrate(120);
+  playBeep();
+
+  searchInput.value = decoded;
+  renderResults(search(decoded));
+  closeScannerModal();
+}
+
+// Tạo âm beep bằng Web Audio (không cần file âm thanh)
+let audioCtx = null;
+function playBeep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = 1200;
+    gain.gain.value = 0.15;
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.08);
+  } catch (e) {}
+}
+
+// Bật/tắt flash
+async function checkTorchSupport() {
+  try {
+    const settings = scanner.getRunningTrackSettings();
+    if (settings && "torch" in settings) {
+      torchBtn.style.display = "flex";
+    }
+  } catch (e) {
+    // Một số phiên bản dùng API khác
+    try {
+      const caps = scanner.getRunningTrackCameraCapabilities();
+      if (caps && caps.torchFeature && caps.torchFeature().isSupported()) {
+        torchBtn.style.display = "flex";
+      }
+    } catch (e2) {}
+  }
+}
+
+torchBtn.addEventListener("click", async () => {
+  if (!scanner) return;
+  try {
+    torchOn = !torchOn;
+    // Thử API mới trước
+    try {
+      const caps = scanner.getRunningTrackCameraCapabilities();
+      if (caps && caps.torchFeature) {
+        await caps.torchFeature().apply(torchOn);
+      }
+    } catch (e) {
+      // Fallback API cũ
+      await scanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    }
+    torchBtn.textContent = torchOn ? "🔦 Tắt" : "🔦";
+    torchBtn.classList.toggle("on", torchOn);
+  } catch (e) {
+    console.warn("Torch toggle failed:", e);
   }
 });
 
@@ -359,6 +480,9 @@ function closeScannerModal() {
     scanner.stop().catch(() => {});
   }
   scanModal.classList.remove("open");
+  torchOn = false;
+  torchBtn.textContent = "🔦";
+  torchBtn.classList.remove("on");
 }
 
 document.getElementById("refreshBtn").addEventListener("click", () => loadData(true));
