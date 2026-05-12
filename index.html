@@ -102,6 +102,38 @@
     background: rgba(255,255,255,.15); color: white; border: 2px solid rgba(255,255,255,.4);
     font-size: 20px; cursor: pointer; align-items: center; justify-content: center; }
   .torch-btn.on { background: var(--accent); color: #1a1a1a; border-color: var(--accent); }
+
+  /* Banner hiển thị thông tin quét */
+  .scan-info {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--text);
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    animation: slideDown .25s ease-out;
+  }
+  .scan-info.show { display: flex; }
+  .scan-info-label { color: var(--text-dim); margin-right: 4px; }
+  .scan-info-orig {
+    color: var(--text-dim); font-family: monospace;
+    background: var(--bg); padding: 2px 6px; border-radius: 4px;
+    text-decoration: line-through; opacity: .7;
+  }
+  .scan-info-arrow { color: var(--accent); font-weight: 700; margin: 0 2px; }
+  .scan-info-code {
+    color: var(--accent); font-family: monospace; font-weight: 700;
+    background: var(--bg); padding: 2px 6px; border-radius: 4px;
+  }
+  @keyframes slideDown {
+    from { transform: translateY(-4px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -414,9 +446,111 @@ function onScanSuccess(decoded) {
   if (navigator.vibrate) navigator.vibrate(120);
   playBeep();
 
-  searchInput.value = decoded;
-  renderResults(search(decoded));
+  // Xử lý chuỗi: cắt 3 đầu, giữ 12 sau = mã SAP
+  // Chỉ cắt khi chuỗi dài >= 15 ký tự (đủ chỗ cho cấu trúc 3+12)
+  // Nếu ngắn hơn → giữ nguyên (có thể là BIN hoặc mã SAP đã sẵn)
+  const processed = extractSapCode(decoded);
+
+  searchInput.value = processed.code;
+  // Hiển thị info dưới ô input để công nhân biết đã cắt từ chuỗi gốc
+  showScanInfo(decoded, processed);
+
+  renderResults(search(processed.code));
   closeScannerModal();
+}
+
+function extractSapCode(raw) {
+  const s = String(raw).trim();
+
+  // Tiền xử lý: bỏ tiền tố "NNC" nếu có (3 ký tự cố định ở QR công ty)
+  const stripped = s.replace(/^NNC/i, "");
+
+  // Layer 1: Mã NVL có format chuẩn L + 11 chữ số → match chính xác bằng regex
+  const nvlMatch = stripped.match(/L\d{11}/);
+  if (nvlMatch) {
+    return {
+      code: nvlMatch[0].toUpperCase(),
+      truncated: s !== nvlMatch[0],
+      method: "NVL pattern",
+      original: s,
+    };
+  }
+
+  // Layer 2: Mã TP đa dạng độ dài (5-12 ký tự). Thử match từ dài đến ngắn,
+  // validate với database để tìm mã có thật
+  if (stripped.match(/^N/i)) {
+    const allTpCodes = new Set([
+      ...DATA.tp.map(r => r.matnr),
+      ...DATA.nvl.map(r => r.matnr),
+    ]);
+    // Thử cắt từ dài đến ngắn (18, 17, ..., 5 ký tự)
+    for (let len = Math.min(stripped.length, 18); len >= 5; len--) {
+      const candidate = stripped.substring(0, len).toUpperCase();
+      if (allTpCodes.has(candidate)) {
+        return {
+          code: candidate,
+          truncated: s !== candidate,
+          method: "TP database match",
+          original: s,
+        };
+      }
+    }
+    // Không tìm thấy trong database → dùng regex bắt N + 5-11 ký tự ở đầu chuỗi đã strip
+    const tpMatch = stripped.match(/^(N[A-Z0-9\-]{4,11})/i);
+    if (tpMatch) {
+      return {
+        code: tpMatch[1].toUpperCase(),
+        truncated: s !== tpMatch[1],
+        method: "TP pattern (no match)",
+        original: s,
+      };
+    }
+  }
+
+  // Layer 3: Fallback - chuỗi >= 15 ký tự → cắt 3 đầu + 12 sau
+  if (s.length >= 15) {
+    return {
+      code: s.substring(3, 15).toUpperCase(),
+      truncated: true,
+      method: "3+12",
+      original: s,
+    };
+  }
+
+  // Layer 4: Chuỗi ngắn → giữ nguyên (có thể là BIN)
+  return {
+    code: s.toUpperCase(),
+    truncated: false,
+    method: "as-is",
+    original: s,
+  };
+}
+
+function showScanInfo(original, processed) {
+  // Hiển thị 1 banner nhỏ trong 4 giây dưới ô input
+  let info = document.getElementById("scanInfo");
+  if (!info) {
+    info = document.createElement("div");
+    info.id = "scanInfo";
+    info.className = "scan-info";
+    document.querySelector(".header").appendChild(info);
+  }
+
+  if (processed.truncated) {
+    info.innerHTML = '<span class="scan-info-label">Đã quét:</span> ' +
+      '<span class="scan-info-orig">' + escapeHtml(processed.original) + '</span>' +
+      '<span class="scan-info-arrow"> → </span>' +
+      '<span class="scan-info-code">' + escapeHtml(processed.code) + '</span>';
+  } else {
+    info.innerHTML = '<span class="scan-info-label">Đã quét:</span> ' +
+      '<span class="scan-info-code">' + escapeHtml(processed.code) + '</span>';
+  }
+  info.classList.add("show");
+
+  clearTimeout(window._scanInfoTimer);
+  window._scanInfoTimer = setTimeout(() => {
+    info.classList.remove("show");
+  }, 4000);
 }
 
 // Tạo âm beep bằng Web Audio (không cần file âm thanh)
