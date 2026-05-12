@@ -144,7 +144,7 @@ async function loadData(force = false) {
       if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
         DATA = cached;
         const ts = cached.updated ? new Date(cached.updated) : new Date(cached.loadedAt);
-        setStatus("ok", "Dữ liệu: " + formatTime(ts) + " (cache)");
+        setStatus("ok", "Dữ liệu SAP: " + formatTime(ts) + " (cache)");
         renderInitial();
         return;
       }
@@ -170,7 +170,7 @@ async function loadData(force = false) {
     localStorage.setItem(CACHE_KEY, JSON.stringify(DATA));
 
     const ts = DATA.updated ? new Date(DATA.updated) : new Date(DATA.loadedAt);
-    setStatus("ok", "Cập nhật: " + formatTime(ts) +
+    setStatus("ok", "Dữ liệu SAP: " + formatTime(ts) +
       " · " + (DATA.nvl.length + DATA.tp.length) + " dòng");
     renderInitial();
   } catch (err) {
@@ -197,8 +197,8 @@ function setStatus(kind, text) {
 }
 
 function formatTime(d) {
-  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) +
-    " " + d.toLocaleDateString("vi-VN");
+  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) +
+    " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function search(query) {
