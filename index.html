@@ -134,6 +134,47 @@
     from { transform: translateY(-4px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
+
+  /* Lịch sử tra cứu */
+  .meta-actions { display: flex; gap: 6px; }
+  .btn-history { background: none; border: 1px solid var(--border);
+    color: var(--text-dim); padding: 4px 10px; border-radius: 8px;
+    font-size: 12px; cursor: pointer; }
+  .btn-history:active { background: var(--bg-elev); }
+  .history-modal { position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 100; display: none; align-items: flex-end; }
+  .history-modal.open { display: flex; }
+  .history-sheet { background: var(--bg); width: 100%; max-height: 85vh;
+    border-radius: 18px 18px 0 0; display: flex; flex-direction: column;
+    animation: slideUp .25s ease-out; }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  .history-head { padding: 16px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); }
+  .history-title { font-size: 17px; font-weight: 700; }
+  .history-close { background: none; border: none; color: var(--text);
+    font-size: 28px; cursor: pointer; padding: 0 8px; line-height: 1; }
+  .history-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .history-item { padding: 12px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .history-item:active { background: var(--bg-elev); }
+  .history-info { flex: 1; min-width: 0; }
+  .history-code { font-size: 16px; font-weight: 600; color: var(--accent);
+    font-family: monospace; word-break: break-all; }
+  .history-meta-row { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .history-result-found { color: var(--ok); }
+  .history-result-none { color: var(--warn); }
+  .history-arrow { color: var(--text-dim); font-size: 18px; flex-shrink: 0; }
+  .history-empty { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+  .history-empty .icon { font-size: 40px; margin-bottom: 10px; opacity: .5; }
+  .history-foot { padding: 12px 16px; border-top: 1px solid var(--border); }
+  .btn-clear-history { width: 100%; padding: 12px; background: transparent;
+    color: var(--warn); border: 1px solid var(--warn); border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-clear-history:active { background: rgba(239,68,68,.15); }
+  .btn-clear-history:disabled { opacity: .4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -149,11 +190,27 @@
 
 <div class="meta">
   <span id="metaText">Đang tải dữ liệu...</span>
-  <button class="btn-refresh" id="refreshBtn">↻ Làm mới</button>
+  <div class="meta-actions">
+    <button class="btn-history" id="historyBtn">🕐 Lịch sử</button>
+    <button class="btn-refresh" id="refreshBtn">↻ Làm mới</button>
+  </div>
 </div>
 
 <div class="content" id="content">
   <div class="status loading">Đang tải dữ liệu</div>
+</div>
+
+<div class="history-modal" id="historyModal">
+  <div class="history-sheet">
+    <div class="history-head">
+      <span class="history-title">Lịch sử tra cứu</span>
+      <button class="history-close" id="closeHistory" aria-label="Đóng">×</button>
+    </div>
+    <div class="history-list" id="historyList"></div>
+    <div class="history-foot">
+      <button class="btn-clear-history" id="clearHistoryBtn">Xóa toàn bộ lịch sử</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="scanModal">
@@ -175,6 +232,8 @@
 const DATA_URL = "./ton-kho.json";
 const CACHE_KEY = "ton_kho_cache_v2";
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const HISTORY_KEY = "ton_kho_history_v1";
+const HISTORY_MAX = 20;
 
 let DATA = { nvl: [], tp: [], updated: null, loadedAt: null };
 const statusDot = document.getElementById("statusDot");
@@ -281,6 +340,8 @@ function renderInitial() {
 
 function renderResults(result) {
   if (!result) { renderInitial(); return; }
+  // Lưu vào lịch sử (cả khi không tìm thấy)
+  addToHistory(result);
   if (result.mode === "NONE") {
     content.innerHTML = '<div class="empty"><div class="icon">∅</div>Không tìm thấy "<b>' + escapeHtml(result.key) + '</b>"</div>';
     return;
@@ -355,6 +416,96 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
+/* =========================================================
+   Lịch sử tra cứu - lưu localStorage
+   ========================================================= */
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveHistory(list) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+  } catch (e) {}
+}
+
+function addToHistory(result) {
+  if (!result || !result.key) return;
+  const list = loadHistory();
+  // Bỏ entry trùng (cùng key) nếu có - sẽ đẩy lên đầu
+  const filtered = list.filter(x => x.key !== result.key);
+  filtered.unshift({
+    key: result.key,
+    mode: result.mode,
+    count: result.rows.length,
+    at: Date.now(),
+  });
+  // Giữ tối đa HISTORY_MAX mục
+  saveHistory(filtered.slice(0, HISTORY_MAX));
+}
+
+function renderHistory() {
+  const list = loadHistory();
+  const listEl = document.getElementById("historyList");
+  const clearBtn = document.getElementById("clearHistoryBtn");
+
+  if (list.length === 0) {
+    listEl.innerHTML = '<div class="history-empty"><div class="icon">📭</div>Chưa có lịch sử tra cứu</div>';
+    clearBtn.disabled = true;
+    return;
+  }
+
+  clearBtn.disabled = false;
+  listEl.innerHTML = list.map(item => {
+    const found = item.count > 0;
+    const resultText = found
+      ? `<span class="history-result-found">✓ ${item.count} kết quả</span>`
+      : `<span class="history-result-none">∅ Không tìm thấy</span>`;
+    return `
+      <div class="history-item" data-key="${escapeHtml(item.key)}">
+        <div class="history-info">
+          <div class="history-code">${escapeHtml(item.key)}</div>
+          <div class="history-meta-row">${resultText}</div>
+        </div>
+        <span class="history-arrow">›</span>
+      </div>
+    `;
+  }).join("");
+
+  // Bind click cho từng item
+  listEl.querySelectorAll(".history-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const key = el.getAttribute("data-key");
+      searchInput.value = key;
+      renderResults(search(key));
+      closeHistoryModal();
+    });
+  });
+}
+
+const historyModal = document.getElementById("historyModal");
+document.getElementById("historyBtn").addEventListener("click", () => {
+  renderHistory();
+  historyModal.classList.add("open");
+});
+document.getElementById("closeHistory").addEventListener("click", closeHistoryModal);
+historyModal.addEventListener("click", e => {
+  // Đóng khi bấm vào nền tối
+  if (e.target === historyModal) closeHistoryModal();
+});
+function closeHistoryModal() {
+  historyModal.classList.remove("open");
+}
+document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+  if (!confirm("Xóa toàn bộ lịch sử tra cứu?")) return;
+  saveHistory([]);
+  renderHistory();
+});
 
 const searchInput = document.getElementById("searchInput");
 let debounceTimer;
