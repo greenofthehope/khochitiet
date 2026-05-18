@@ -82,6 +82,22 @@
     font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
   .field .value { color: var(--text); font-weight: 600; word-break: break-all; }
   .field .value.qty { color: var(--ok); font-size: 16px; }
+  /* Hiển thị nhiều batch trong cùng 1 card (cùng BIN + cùng mã SAP) */
+  .batch-list { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+  .batch-row { display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 8px 10px; background: var(--bg); border-radius: 8px;
+    border: 1px solid var(--border); }
+  .batch-row .batch-code { font-family: monospace; font-size: 13px;
+    color: var(--text); font-weight: 600; }
+  .batch-row .batch-code.empty { color: var(--text-dim); font-style: italic; font-weight: 400; }
+  .batch-row .batch-qty { color: var(--ok); font-weight: 700; font-size: 15px;
+    white-space: nowrap; }
+  .batch-total { display: flex; justify-content: space-between; align-items: center;
+    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+    font-size: 13px; }
+  .batch-total .label { color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: .5px; font-size: 11px; }
+  .batch-total .value { color: var(--ok); font-weight: 700; font-size: 16px; }
   .empty { text-align: center; padding: 50px 20px; color: var(--text-dim); }
   .empty .icon { font-size: 40px; margin-bottom: 10px; opacity: .5; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.92);
@@ -368,23 +384,49 @@ function renderResults(result) {
     header = '<div class="summary">Tìm theo tên: <b>' + rows.length + '</b> kết quả</div>';
   }
 
-  const cards = rows.map(r => renderCard(r, result.mode)).join("");
+  const cards = groupByBinAndMatnr(rows).map(g => renderCard(g, result.mode)).join("");
   content.innerHTML = header + cards;
 }
 
-function renderCard(r, mode) {
+/* Gộp các dòng có cùng BIN + cùng mã SAP (chỉ khác batch) thành 1 nhóm.
+   Giữ nguyên thứ tự xuất hiện đầu tiên. */
+function groupByBinAndMatnr(rows) {
+  const map = new Map();
+  const order = [];
+  for (const r of rows) {
+    const key = r.bin + "||" + r.matnr;
+    if (!map.has(key)) {
+      map.set(key, {
+        bin: r.bin,
+        matnr: r.matnr,
+        name: r.name,
+        type: r.type,
+        unit: r.unit,
+        batches: [],
+      });
+      order.push(key);
+    }
+    map.get(key).batches.push({ batch: r.batch, qty: r.qty });
+  }
+  return order.map(k => map.get(k));
+}
+
+function renderCard(g, mode) {
   const showBinFirst = (mode === "MATNR" || mode === "MATNR_LIKE" || mode === "NAME");
-  const primary = showBinFirst ? r.bin : r.matnr;
-  const secondary = showBinFirst ? r.matnr : r.bin;
+  const primary = showBinFirst ? g.bin : g.matnr;
+  const secondary = showBinFirst ? g.matnr : g.bin;
   const secondaryLabel = showBinFirst ? "Mã SAP" : "BIN";
 
-  return `
-    <div class="card">
-      <div class="card-head">
-        <div class="card-primary">${escapeHtml(primary)}</div>
-        <span class="card-tag ${r.type.toLowerCase()}">${r.type}</span>
-      </div>
-      <div class="card-name">${escapeHtml(r.name) || '<i style="color:var(--text-dim)">(không có tên)</i>'}</div>
+  const totalQty = g.batches.reduce((s, b) => s + b.qty, 0);
+  const unit = g.unit || "";
+  const multi = g.batches.length > 1;
+
+  // Nếu chỉ có 1 batch → layout cũ (2x2 grid).
+  // Nếu có nhiều batch → bỏ ô Batch + Số lượng trong grid, hiển thị danh sách batch bên dưới.
+  let body;
+  if (!multi) {
+    const b = g.batches[0];
+    body = `
       <div class="grid">
         <div class="field">
           <span class="label">${secondaryLabel}</span>
@@ -392,17 +434,55 @@ function renderCard(r, mode) {
         </div>
         <div class="field">
           <span class="label">Batch</span>
-          <span class="value">${escapeHtml(r.batch) || '—'}</span>
+          <span class="value">${escapeHtml(b.batch) || '—'}</span>
         </div>
         <div class="field">
           <span class="label">Số lượng</span>
-          <span class="value qty">${formatQty(r.qty)} ${escapeHtml(r.unit)}</span>
+          <span class="value qty">${formatQty(b.qty)} ${escapeHtml(unit)}</span>
         </div>
         <div class="field">
           <span class="label">Đơn vị</span>
-          <span class="value">${escapeHtml(r.unit) || '—'}</span>
+          <span class="value">${escapeHtml(unit) || '—'}</span>
         </div>
       </div>
+    `;
+  } else {
+    const batchRows = g.batches.map(b => `
+      <div class="batch-row">
+        <span class="batch-code ${b.batch ? '' : 'empty'}">${escapeHtml(b.batch) || '(không có batch)'}</span>
+        <span class="batch-qty">${formatQty(b.qty)} ${escapeHtml(unit)}</span>
+      </div>
+    `).join("");
+    body = `
+      <div class="grid">
+        <div class="field">
+          <span class="label">${secondaryLabel}</span>
+          <span class="value">${escapeHtml(secondary)}</span>
+        </div>
+        <div class="field">
+          <span class="label">Đơn vị</span>
+          <span class="value">${escapeHtml(unit) || '—'}</span>
+        </div>
+      </div>
+      <div class="field" style="margin-top:10px">
+        <span class="label">Batch (${g.batches.length})</span>
+        <div class="batch-list">${batchRows}</div>
+      </div>
+      <div class="batch-total">
+        <span class="label">Tổng cộng</span>
+        <span class="value">${formatQty(totalQty)} ${escapeHtml(unit)}</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-primary">${escapeHtml(primary)}</div>
+        <span class="card-tag ${g.type.toLowerCase()}">${g.type}</span>
+      </div>
+      <div class="card-name">${escapeHtml(g.name) || '<i style="color:var(--text-dim)">(không có tên)</i>'}</div>
+      ${body}
     </div>
   `;
 }
