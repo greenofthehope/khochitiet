@@ -34,6 +34,7 @@
     --accent-hover: #f59e0b;
     --ok: #10b981;
     --warn: #ef4444;
+    --info: #3b82f6;
     --radius: 14px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -81,16 +82,34 @@
     font-size: 12px; margin-right: 6px; }
   .summary .key { color: var(--accent); font-weight: 700; }
   .summary .total { color: var(--ok); font-weight: 700; }
+  .summary .total.warn { color: var(--warn); }
+  .summary .total.info { color: var(--info); }
+
+  /* Mã không tồn tại MARA */
+  .not-exist { background: var(--bg-elev); border: 1px solid var(--warn);
+    border-radius: var(--radius); padding: 20px 16px; margin-bottom: 10px;
+    text-align: center; }
+  .not-exist .icon { font-size: 38px; margin-bottom: 8px; }
+  .not-exist .head { font-size: 17px; font-weight: 700; color: var(--warn); margin-bottom: 6px; }
+  .not-exist .code { font-family: monospace; font-size: 16px; color: var(--accent);
+    background: var(--bg); padding: 4px 10px; border-radius: 6px; display: inline-block;
+    margin: 6px 0; }
+  .not-exist .hint { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
   .card { background: var(--bg-elev); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
+  .card.free-loc { border-color: var(--info); }
   .card-head { display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 8px; gap: 10px; }
   .card-primary { font-size: 18px; font-weight: 700; color: var(--accent); word-break: break-all; }
+  .card-primary.free { color: var(--info); }
   .card-tag { font-size: 11px; padding: 3px 8px; border-radius: 6px;
     background: var(--bg-card); color: var(--text-dim);
     text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; }
   .card-tag.tp { background: #064e3b; color: #6ee7b7; }
   .card-tag.nvl { background: #1e3a8a; color: #93c5fd; }
+  .card-tag.free { background: #1e40af; color: #bfdbfe; }
+  .card-tag.bom { background: #4c1d95; color: #c4b5fd; }
   .card-name { font-size: 14px; color: var(--text); margin-bottom: 10px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
   .field { font-size: 13px; }
@@ -98,6 +117,7 @@
     font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
   .field .value { color: var(--text); font-weight: 600; word-break: break-all; }
   .field .value.qty { color: var(--ok); font-size: 16px; }
+  .field .value.info { color: var(--info); font-size: 16px; }
   /* Hiển thị nhiều batch trong cùng 1 card (cùng BIN + cùng mã SAP) */
   .batch-list { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
   .batch-row { display: flex; justify-content: space-between; align-items: center;
@@ -114,6 +134,32 @@
   .batch-total .label { color: var(--text-dim); text-transform: uppercase;
     letter-spacing: .5px; font-size: 11px; }
   .batch-total .value { color: var(--ok); font-weight: 700; font-size: 16px; }
+
+  /* Section BOM lookup */
+  .section-head { display: flex; align-items: center; gap: 8px;
+    margin: 18px 0 8px; padding: 0 2px; }
+  .section-head .section-title { font-size: 13px; font-weight: 700;
+    color: var(--text-dim); text-transform: uppercase; letter-spacing: .6px; }
+  .section-head .section-count { font-size: 11px; color: var(--text-dim);
+    background: var(--bg-elev); padding: 2px 8px; border-radius: 6px; }
+
+  /* BOM compact list */
+  .bom-card { background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+  .bom-row { display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); cursor: pointer; }
+  .bom-row:last-child { border-bottom: none; }
+  .bom-row:active { opacity: .6; }
+  .bom-row .bom-info { flex: 1; min-width: 0; }
+  .bom-row .bom-code { font-family: monospace; font-size: 14px;
+    color: var(--accent); font-weight: 700; word-break: break-all; }
+  .bom-row .bom-name { font-size: 12px; color: var(--text-dim);
+    margin-top: 2px; word-break: break-word; }
+  .bom-row .bom-qty { color: var(--ok); font-weight: 700; font-size: 13px;
+    white-space: nowrap; text-align: right; }
+  .bom-row .bom-qty .ref { display: block; font-size: 10px; color: var(--text-dim);
+    font-weight: 400; margin-top: 1px; }
+
   .empty { text-align: center; padding: 50px 20px; color: var(--text-dim); }
   .empty .icon { font-size: 40px; margin-bottom: 10px; opacity: .5; }
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.92);
@@ -262,12 +308,24 @@
    File JSON đặt cùng repo, đường dẫn tương đối
    ========================================================= */
 const DATA_URL = "./ton-kho.json";
-const CACHE_KEY = "ton_kho_cache_v2";
+const CACHE_KEY = "ton_kho_cache_v3";   // bumped: structure mới có mara/mb52/bom
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const HISTORY_KEY = "ton_kho_history_v1";
 const HISTORY_MAX = 20;
 
-let DATA = { nvl: [], tp: [], updated: null, loadedAt: null };
+let DATA = {
+  nvl: [], tp: [], mara: [], mb52: [], bom: [],
+  updated: null, loadedAt: null
+};
+
+// Index để tra cứu nhanh - rebuild mỗi lần load data
+let IDX = {
+  mara: new Map(),       // matnr -> { name, unit }
+  mb52ByMat: new Map(),  // matnr -> [ {lgort, qty, block?, name, unit}, ... ]
+  bomByTp: new Map(),    // tp -> [ bom rows ]
+  bomByComp: new Map(),  // comp -> [ bom rows ]
+};
+
 const statusDot = document.getElementById("statusDot");
 const metaText = document.getElementById("metaText");
 const content = document.getElementById("content");
@@ -277,7 +335,7 @@ async function loadData(force = false) {
     try {
       const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
       if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
-        DATA = cached;
+        applyData(cached);
         const ts = cached.updated ? new Date(cached.updated) : new Date(cached.loadedAt);
         setStatus("ok", "Dữ liệu SAP: " + formatTime(ts) + " (cache)");
         renderInitial();
@@ -296,22 +354,54 @@ async function loadData(force = false) {
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const json = await resp.json();
 
-    DATA = {
-      nvl: (json.nvl || []).map(normalizeRow),
-      tp: (json.tp || []).map(normalizeRow),
+    const fresh = {
+      nvl:  (json.nvl  || []).map(normalizeRow),
+      tp:   (json.tp   || []).map(normalizeRow),
+      mara: (json.mara || []).map(normalizeMara),
+      mb52: (json.mb52 || []).map(normalizeMb52),
+      bom:  (json.bom  || []).map(normalizeBom),
       updated: json.updated || null,
       loadedAt: Date.now(),
     };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(DATA));
+    applyData(fresh);
+
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+    } catch (e) {
+      // localStorage có thể đầy với JSON lớn. Bỏ qua, vẫn dùng được dữ liệu trong RAM
+      console.warn("Cache write failed:", e.message);
+    }
 
     const ts = DATA.updated ? new Date(DATA.updated) : new Date(DATA.loadedAt);
     setStatus("ok", "Dữ liệu SAP: " + formatTime(ts) +
-      " · " + (DATA.nvl.length + DATA.tp.length) + " dòng");
+      " · " + (DATA.nvl.length + DATA.tp.length) + " dòng kho");
     renderInitial();
   } catch (err) {
     setStatus("warn", "Lỗi tải dữ liệu");
     content.innerHTML = '<div class="empty"><div class="icon">❌</div>Không tải được dữ liệu.<br><small style="opacity:.7">' +
       err.message + '</small></div>';
+  }
+}
+
+function applyData(d) {
+  DATA = d;
+  // Build index
+  IDX.mara = new Map();
+  for (const m of d.mara) IDX.mara.set(m.matnr, m);
+
+  IDX.mb52ByMat = new Map();
+  for (const r of d.mb52) {
+    if (!IDX.mb52ByMat.has(r.matnr)) IDX.mb52ByMat.set(r.matnr, []);
+    IDX.mb52ByMat.get(r.matnr).push(r);
+  }
+
+  IDX.bomByTp = new Map();
+  IDX.bomByComp = new Map();
+  for (const r of d.bom) {
+    if (!IDX.bomByTp.has(r.tp)) IDX.bomByTp.set(r.tp, []);
+    IDX.bomByTp.get(r.tp).push(r);
+    if (!IDX.bomByComp.has(r.comp)) IDX.bomByComp.set(r.comp, []);
+    IDX.bomByComp.get(r.comp).push(r);
   }
 }
 
@@ -326,6 +416,38 @@ function normalizeRow(r) {
   };
 }
 
+function normalizeMara(r) {
+  return {
+    matnr: String(r.matnr || "").trim().toUpperCase(),
+    name:  String(r.name  || "").trim(),
+    unit:  String(r.unit  || "").trim(),
+  };
+}
+
+function normalizeMb52(r) {
+  return {
+    matnr: String(r.matnr || "").trim().toUpperCase(),
+    name:  String(r.name  || "").trim(),
+    unit:  String(r.unit  || "").trim(),
+    lgort: String(r.lgort || "").trim().toUpperCase(),
+    qty:   Number(r.qty)   || 0,
+    block: Number(r.block) || 0,
+  };
+}
+
+function normalizeBom(r) {
+  return {
+    tp:       String(r.tp       || "").trim().toUpperCase(),
+    tpName:   String(r.tpName   || "").trim(),
+    comp:     String(r.comp     || "").trim().toUpperCase(),
+    compName: String(r.compName || "").trim(),
+    qty:      Number(r.qty)     || 0,
+    unit:     String(r.unit     || "").trim(),
+    ref:      String(r.ref      || "").trim(),
+    scrap:    Number(r.scrap)   || 0,
+  };
+}
+
 function setStatus(kind, text) {
   statusDot.className = "dot " + (kind === "ok" ? "ok" : kind === "warn" ? "warn" : "");
   metaText.textContent = text;
@@ -336,6 +458,9 @@ function formatTime(d) {
     " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/* =========================================================
+   Search logic
+   ========================================================= */
 function search(query) {
   const q = query.trim().toUpperCase();
   if (!q) return null;
@@ -345,12 +470,23 @@ function search(query) {
     ...DATA.tp.map(r => ({ ...r, type: "TP" })),
   ];
 
+  // BIN khớp chính xác
   const binExact = all.filter(r => r.bin === q);
   if (binExact.length) return { mode: "BIN", key: q, rows: binExact };
 
+  // Mã SAP khớp chính xác (có thể không có tồn nhưng vẫn có trong MARA)
   const matExact = all.filter(r => r.matnr === q);
-  if (matExact.length) return { mode: "MATNR", key: q, rows: matExact };
+  if (matExact.length) {
+    return { mode: "MATNR", key: q, rows: matExact };
+  }
 
+  // Không có tồn nhưng có thể MARA có (mã hợp lệ, hết tồn)
+  // hoặc MB52 có (tồn ở free location)
+  if (IDX.mara.has(q) || IDX.mb52ByMat.has(q) || IDX.bomByTp.has(q) || IDX.bomByComp.has(q)) {
+    return { mode: "MATNR", key: q, rows: [] };
+  }
+
+  // Tìm gần đúng theo prefix
   const binPrefix = all.filter(r => r.bin.startsWith(q));
   const matPrefix = all.filter(r => r.matnr.startsWith(q));
 
@@ -360,6 +496,7 @@ function search(query) {
     return { mode: "MIXED", key: q, rows: [...binPrefix, ...matPrefix] };
   }
 
+  // Tìm trong tên
   const inName = all.filter(r => r.name.toUpperCase().includes(q));
   if (inName.length) return { mode: "NAME", key: q, rows: inName };
 
@@ -370,15 +507,257 @@ function renderInitial() {
   content.innerHTML = '<div class="empty"><div class="icon">🔍</div>Nhập <b>số BIN</b> (vd: CK013-06-3) hoặc <b>mã SAP</b> (vd: L21210419013)<br><br>Hoặc nhấn 📷 để quét mã vạch</div>';
 }
 
+/* =========================================================
+   Render result
+   ========================================================= */
 function renderResults(result) {
   if (!result) { renderInitial(); return; }
-  // Lưu vào lịch sử (cả khi không tìm thấy)
   addToHistory(result);
+
   if (result.mode === "NONE") {
-    content.innerHTML = '<div class="empty"><div class="icon">∅</div>Không tìm thấy "<b>' + escapeHtml(result.key) + '</b>"</div>';
+    // Không có ở đâu cả → mã không tồn tại
+    content.innerHTML = renderNotExist(result.key);
     return;
   }
 
+  // Mã SAP: gom kết quả + so sánh MB52 + hiển thị BOM
+  if (result.mode === "MATNR") {
+    renderMatnrResult(result);
+    return;
+  }
+
+  // BIN, BIN_LIKE, MATNR_LIKE, MIXED, NAME → render kiểu danh sách như cũ
+  renderListResults(result);
+}
+
+function renderNotExist(key) {
+  return `
+    <div class="not-exist">
+      <div class="icon">⚠️</div>
+      <div class="head">Mã SAP không tồn tại</div>
+      <div class="code">${escapeHtml(key)}</div>
+      <div class="hint">Mã không có trong dữ liệu kho, MARA, MB52 và BOM.<br>
+      Vui lòng kiểm tra lại mã đã nhập / đã quét.</div>
+    </div>
+  `;
+}
+
+function renderMatnrResult(result) {
+  const key = result.key;
+  const rows = result.rows;          // các dòng kho khớp matnr (có thể rỗng)
+
+  // Master data
+  const mara = IDX.mara.get(key);
+  const mb52List = IDX.mb52ByMat.get(key) || [];
+  const bomAsTp   = IDX.bomByTp.get(key)   || [];   // mã này là TP → list NVL của nó
+  const bomAsComp = IDX.bomByComp.get(key) || [];   // mã này là NVL → list TP dùng nó
+
+  // Nếu rỗng hoàn toàn ngoại trừ MARA → hiển thị "có trong master nhưng không có tồn"
+  if (!mara && rows.length === 0 && mb52List.length === 0 &&
+      bomAsTp.length === 0 && bomAsComp.length === 0) {
+    content.innerHTML = renderNotExist(key);
+    return;
+  }
+
+  // Tên + đơn vị: ưu tiên từ row tồn → MARA → MB52 → BOM
+  let name = "", unit = "";
+  if (rows.length) { name = rows[0].name; unit = rows[0].unit; }
+  else if (mara)   { name = mara.name;    unit = mara.unit; }
+  else if (mb52List.length) { name = mb52List[0].name; unit = mb52List[0].unit; }
+  else if (bomAsTp.length)   { name = bomAsTp[0].tpName;   unit = ""; }
+  else if (bomAsComp.length) { name = bomAsComp[0].compName; unit = bomAsComp[0].unit; }
+
+  // Tổng tồn từ NVL+TP (theo dòng từ sheet kho)
+  const totalBin = rows.reduce((s, r) => s + r.qty, 0);
+
+  // Tổng tồn từ MB52 group theo LGORT
+  // mb52List có thể có nhiều dòng cùng LGORT? thường mỗi LGORT 1 dòng nhưng vẫn safe
+  const mb52ByLgort = new Map();
+  for (const r of mb52List) {
+    if (!mb52ByLgort.has(r.lgort)) {
+      mb52ByLgort.set(r.lgort, { lgort: r.lgort, qty: 0, block: 0, unit: r.unit });
+    }
+    const g = mb52ByLgort.get(r.lgort);
+    g.qty += r.qty;
+    g.block += r.block;
+  }
+
+  // Free location: NVL/TP sheet KHÔNG có cột LGORT, MB52 có.
+  // Cách phân bổ: BIN tiêu thụ MB52 theo thứ tự LGORT từ kho có nhiều nhất.
+  // Mỗi LGORT, MB52 còn dư sau khi BIN "ăn" chính là Free location của LGORT đó.
+  // Cách này khớp với trường hợp:
+  //   - BIN cộng đúng bằng MB52 một LGORT → LGORT khác là Free 100%
+  //   - BIN ít hơn tổng → các LGORT đông MB52 nhất giữ phần Free đầu tiên
+  const freeCards = [];
+  if (mb52List.length > 0) {
+    const lgs = [...mb52ByLgort.values()].sort((a, b) => b.qty - a.qty);
+    let binRemaining = totalBin;
+    for (const g of lgs) {
+      const consumed = Math.min(g.qty, binRemaining);
+      const free = g.qty - consumed;
+      binRemaining -= consumed;
+      if (free > 0.0001) {
+        freeCards.push({ lgort: g.lgort, qty: free, unit: g.unit });
+      }
+    }
+  }
+
+  // ----- Header summary -----
+  let header = '';
+  const totalMb52 = mb52List.reduce((s, r) => s + r.qty, 0);
+  if (mb52List.length || rows.length) {
+    let totalLine = '';
+    if (rows.length) {
+      totalLine = `Tồn theo BIN: <span class="total">${formatQty(totalBin)} ${escapeHtml(unit)}</span>`;
+    }
+    if (mb52List.length) {
+      const lgortStr = [...mb52ByLgort.keys()].sort().join(', ');
+      const mb52Cls = (totalMb52 !== totalBin) ? 'total info' : 'total';
+      totalLine += (totalLine ? '<br>' : '') +
+        `Tồn MB52 (${escapeHtml(lgortStr)}): <span class="${mb52Cls}">${formatQty(totalMb52)} ${escapeHtml(unit)}</span>`;
+    }
+    header = `<div class="summary"><span class="badge">MÃ SAP</span> <span class="key">${escapeHtml(key)}</span>` +
+      (name ? ' — ' + escapeHtml(name) : '') +
+      (totalLine ? '<br>' + totalLine : '') +
+      '</div>';
+  } else {
+    // Chỉ có trong MARA hoặc BOM
+    header = `<div class="summary"><span class="badge">MÃ SAP</span> <span class="key">${escapeHtml(key)}</span>` +
+      (name ? ' — ' + escapeHtml(name) : '') +
+      '<br><span style="color:var(--text-dim)">Không có tồn kho hiện tại</span></div>';
+  }
+
+  // ----- BIN cards -----
+  let binCardsHtml = '';
+  if (rows.length) {
+    const groups = groupByBinAndMatnr(rows);
+    binCardsHtml = groups.map(g => renderCard(g, "MATNR")).join("");
+  }
+
+  // ----- Free location cards -----
+  let freeCardsHtml = '';
+  if (freeCards.length) {
+    freeCardsHtml =
+      '<div class="section-head"><span class="section-title">Free location</span>' +
+      `<span class="section-count">${freeCards.length} kho</span></div>` +
+      freeCards.map(fc => renderFreeCard(fc, key, name)).join("");
+  }
+
+  // ----- BOM section -----
+  let bomHtml = '';
+  if (bomAsTp.length) {
+    // Mã này là TP → liệt kê các NVL cấu thành (gộp trùng comp)
+    bomHtml += renderBomSection(
+      "📋 Cấu thành (BOM)",
+      "Mã này dùng những NVL sau",
+      groupBomBy(bomAsTp, 'comp'),
+      'comp'
+    );
+  }
+  if (bomAsComp.length) {
+    // Mã này là NVL → liệt kê các TP sử dụng nó
+    bomHtml += renderBomSection(
+      "🔗 Được dùng cho (BOM)",
+      "Mã này được dùng làm linh kiện cho",
+      groupBomBy(bomAsComp, 'tp'),
+      'tp'
+    );
+  }
+
+  content.innerHTML = header + binCardsHtml + freeCardsHtml + bomHtml;
+  bindBomClick();
+}
+
+function renderFreeCard(fc, matnr, name) {
+  return `
+    <div class="card free-loc">
+      <div class="card-head">
+        <div class="card-primary free">Free location</div>
+        <span class="card-tag free">${escapeHtml(fc.lgort)}</span>
+      </div>
+      <div class="card-name">${escapeHtml(name) || '<i style="color:var(--text-dim)">(không có tên)</i>'}</div>
+      <div class="grid">
+        <div class="field">
+          <span class="label">Mã SAP</span>
+          <span class="value">${escapeHtml(matnr)}</span>
+        </div>
+        <div class="field">
+          <span class="label">Số lượng</span>
+          <span class="value info">${formatQty(fc.qty)} ${escapeHtml(fc.unit)}</span>
+        </div>
+      </div>
+      <div class="batch-total">
+        <span class="label">Ghi chú</span>
+        <span style="font-size:11px;color:var(--text-dim);text-align:right;">
+          MB52 ${escapeHtml(fc.lgort)} có nhiều hơn tổng tồn theo BIN —<br>hàng chưa được put-away vào vị trí cụ thể.
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+/** Gộp BOM rows trùng key (tp hoặc comp) lại - cộng dồn qty */
+function groupBomBy(rows, key) {
+  const m = new Map();
+  const order = [];
+  for (const r of rows) {
+    const k = r[key];
+    if (!m.has(k)) {
+      m.set(k, { ...r, qty: 0 });
+      order.push(k);
+    }
+    m.get(k).qty += r.qty;
+  }
+  return order.map(k => m.get(k));
+}
+
+function renderBomSection(title, hint, items, codeKey) {
+  // codeKey = 'comp' (TP → NVL components) hoặc 'tp' (NVL → TP that use it)
+  const rowsHtml = items.map(b => {
+    const code = b[codeKey];
+    const name = codeKey === 'comp' ? b.compName : b.tpName;
+    const unit = codeKey === 'comp' ? b.unit : 'PCS';   // TP unit thường là PCS
+    const refTxt = (codeKey === 'comp' && b.ref) ? `<span class="ref">vị trí: ${escapeHtml(b.ref)}</span>` : '';
+    return `
+      <div class="bom-row" data-code="${escapeHtml(code)}">
+        <div class="bom-info">
+          <div class="bom-code">${escapeHtml(code)}</div>
+          <div class="bom-name">${escapeHtml(name) || '(không có tên)'}</div>
+        </div>
+        <div class="bom-qty">
+          ${formatQty(b.qty)} ${escapeHtml(unit)}
+          ${refTxt}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="section-head">
+      <span class="section-title">${title}</span>
+      <span class="section-count">${items.length}</span>
+    </div>
+    <div class="bom-card">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">${hint} (tap để tra tiếp):</div>
+      ${rowsHtml}
+    </div>
+  `;
+}
+
+function bindBomClick() {
+  content.querySelectorAll(".bom-row").forEach(el => {
+    el.addEventListener("click", () => {
+      const code = el.getAttribute("data-code");
+      if (!code) return;
+      searchInput.value = code;
+      renderResults(search(code));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+}
+
+/** Render kết quả dạng danh sách (BIN, fuzzy, name search) - giữ logic cũ */
+function renderListResults(result) {
   const rows = result.rows.slice(0, 200);
   let header = "";
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
@@ -387,11 +766,6 @@ function renderResults(result) {
   if (result.mode === "BIN") {
     header = '<div class="summary"><span class="badge">BIN</span> <span class="key">' +
       escapeHtml(result.key) + '</span> — chứa <b>' + rows.length + '</b> mã, tổng <span class="total">' +
-      formatQty(totalQty) + ' ' + escapeHtml(unit) + '</span></div>';
-  } else if (result.mode === "MATNR") {
-    header = '<div class="summary"><span class="badge">MÃ SAP</span> <span class="key">' +
-      escapeHtml(result.key) + '</span> — ' + escapeHtml(rows[0].name) +
-      '<br>Có ở <b>' + rows.length + '</b> BIN, tổng <span class="total">' +
       formatQty(totalQty) + ' ' + escapeHtml(unit) + '</span></div>';
   } else if (result.mode === "BIN_LIKE" || result.mode === "MATNR_LIKE" || result.mode === "MIXED") {
     header = '<div class="summary">Tìm thấy <b>' + rows.length + '</b> kết quả gần đúng cho "' +
@@ -437,8 +811,6 @@ function renderCard(g, mode) {
   const unit = g.unit || "";
   const multi = g.batches.length > 1;
 
-  // Nếu chỉ có 1 batch → layout cũ (2x2 grid).
-  // Nếu có nhiều batch → bỏ ô Batch + Số lượng trong grid, hiển thị danh sách batch bên dưới.
   let body;
   if (!multi) {
     const b = g.batches[0];
@@ -533,7 +905,6 @@ function saveHistory(list) {
 function addToHistory(result) {
   if (!result || !result.key) return;
   const list = loadHistory();
-  // Bỏ entry trùng (cùng key) nếu có - sẽ đẩy lên đầu
   const filtered = list.filter(x => x.key !== result.key);
   filtered.unshift({
     key: result.key,
@@ -541,7 +912,6 @@ function addToHistory(result) {
     count: result.rows.length,
     at: Date.now(),
   });
-  // Giữ tối đa HISTORY_MAX mục
   saveHistory(filtered.slice(0, HISTORY_MAX));
 }
 
@@ -558,9 +928,13 @@ function renderHistory() {
 
   clearBtn.disabled = false;
   listEl.innerHTML = list.map(item => {
-    const found = item.count > 0;
+    // Với mode=MATNR và count=0 → có thể vẫn có MB52/BOM nên không hẳn là "không tìm thấy"
+    // Đơn giản: dùng count>0 OR mode=MATNR (đã trong MARA/MB52/BOM)
+    const found = item.count > 0 || item.mode === "MATNR";
     const resultText = found
-      ? `<span class="history-result-found">✓ ${item.count} kết quả</span>`
+      ? (item.count > 0
+          ? `<span class="history-result-found">✓ ${item.count} kết quả</span>`
+          : `<span class="history-result-found">✓ Mã hợp lệ</span>`)
       : `<span class="history-result-none">∅ Không tìm thấy</span>`;
     return `
       <div class="history-item" data-key="${escapeHtml(item.key)}">
@@ -573,7 +947,6 @@ function renderHistory() {
     `;
   }).join("");
 
-  // Bind click cho từng item
   listEl.querySelectorAll(".history-item").forEach(el => {
     el.addEventListener("click", () => {
       const key = el.getAttribute("data-key");
@@ -591,7 +964,6 @@ document.getElementById("historyBtn").addEventListener("click", () => {
 });
 document.getElementById("closeHistory").addEventListener("click", closeHistoryModal);
 historyModal.addEventListener("click", e => {
-  // Đóng khi bấm vào nền tối
   if (e.target === historyModal) closeHistoryModal();
 });
 function closeHistoryModal() {
@@ -636,7 +1008,6 @@ const PREFERRED_FORMATS = [
   Html5QrcodeSupportedFormats.DATA_MATRIX,
 ];
 
-// Responsive qrbox - to hơn = dễ quét hơn
 function getQrBoxSize(viewportWidth, viewportHeight) {
   const minDim = Math.min(viewportWidth, viewportHeight);
   const size = Math.floor(minDim * 0.75);
@@ -649,7 +1020,6 @@ scanBtn.addEventListener("click", async () => {
   if (!scanner) {
     scanner = new Html5Qrcode("reader", {
       formatsToSupport: PREFERRED_FORMATS,
-      // Bật BarcodeDetector API native - nhanh hơn ZXing JS 5-10 lần
       experimentalFeatures: { useBarCodeDetectorIfSupported: true },
       verbose: false,
     });
@@ -659,28 +1029,25 @@ scanBtn.addEventListener("click", async () => {
     await scanner.start(
       { facingMode: "environment" },
       {
-        fps: 25,                          // tăng từ 10 lên 25
-        qrbox: getQrBoxSize,              // vùng quét lớn, responsive
+        fps: 25,
+        qrbox: getQrBoxSize,
         aspectRatio: 1.0,
-        disableFlip: false,               // cho phép quét cả mã bị mirror
+        disableFlip: false,
         videoConstraints: {
           facingMode: "environment",
-          width: { ideal: 1920 },         // Full HD nếu camera hỗ trợ
+          width: { ideal: 1920 },
           height: { ideal: 1080 },
-          // focusMode auto nếu device hỗ trợ
           advanced: [{ focusMode: "continuous" }]
         }
       },
       onScanSuccess,
-      () => {}                            // bỏ qua mọi lỗi mỗi frame
+      () => {}
     );
 
-    // Lấy track của camera để bật flash sau này
     currentTrack = scanner.getRunningTrackCameraCapabilities
       ? scanner.getRunningTrackCameraCapabilities()
       : null;
 
-    // Hiện nút flash nếu device hỗ trợ
     setTimeout(checkTorchSupport, 500);
   } catch (e) {
     alert("Không mở được camera: " + e.message);
@@ -689,17 +1056,12 @@ scanBtn.addEventListener("click", async () => {
 });
 
 function onScanSuccess(decoded) {
-  // Phản hồi vật lý: rung điện thoại + âm beep ngắn
   if (navigator.vibrate) navigator.vibrate(120);
   playBeep();
 
-  // Xử lý chuỗi: cắt 3 đầu, giữ 12 sau = mã SAP
-  // Chỉ cắt khi chuỗi dài >= 15 ký tự (đủ chỗ cho cấu trúc 3+12)
-  // Nếu ngắn hơn → giữ nguyên (có thể là BIN hoặc mã SAP đã sẵn)
   const processed = extractSapCode(decoded);
 
   searchInput.value = processed.code;
-  // Hiển thị info dưới ô input để công nhân biết đã cắt từ chuỗi gốc
   showScanInfo(decoded, processed);
 
   renderResults(search(processed.code));
@@ -724,26 +1086,26 @@ function extractSapCode(raw) {
   }
 
   // Layer 2: Mã TP đa dạng độ dài (5-12 ký tự). Thử match từ dài đến ngắn,
-  // validate với database để tìm mã có thật
+  // validate với database (MARA + tp + nvl) để tìm mã có thật
   if (stripped.match(/^N/i)) {
-    const allTpCodes = new Set([
+    const allCodes = new Set([
       ...DATA.tp.map(r => r.matnr),
       ...DATA.nvl.map(r => r.matnr),
+      ...DATA.mara.map(r => r.matnr),    // mở rộng: dùng cả master data
     ]);
-    // Thử cắt từ dài đến ngắn (18, 17, ..., 5 ký tự)
     for (let len = Math.min(stripped.length, 18); len >= 5; len--) {
       const candidate = stripped.substring(0, len).toUpperCase();
-      if (allTpCodes.has(candidate)) {
+      if (allCodes.has(candidate)) {
         return {
           code: candidate,
           truncated: s !== candidate,
-          method: "TP database match",
+          method: "DB match",
           original: s,
         };
       }
     }
-    // Không tìm thấy trong database → dùng regex bắt N + 5-11 ký tự ở đầu chuỗi đã strip
-    const tpMatch = stripped.match(/^(N[A-Z0-9\-]{4,11})/i);
+    // Không tìm thấy trong database → dùng regex bắt N + 4-17 ký tự ở đầu chuỗi đã strip
+    const tpMatch = stripped.match(/^(N[A-Z0-9\-]{4,17})/i);
     if (tpMatch) {
       return {
         code: tpMatch[1].toUpperCase(),
@@ -774,7 +1136,6 @@ function extractSapCode(raw) {
 }
 
 function showScanInfo(original, processed) {
-  // Hiển thị 1 banner nhỏ trong 4 giây dưới ô input
   let info = document.getElementById("scanInfo");
   if (!info) {
     info = document.createElement("div");
@@ -800,7 +1161,6 @@ function showScanInfo(original, processed) {
   }, 4000);
 }
 
-// Tạo âm beep bằng Web Audio (không cần file âm thanh)
 let audioCtx = null;
 function playBeep() {
   try {
@@ -816,7 +1176,6 @@ function playBeep() {
   } catch (e) {}
 }
 
-// Bật/tắt flash
 async function checkTorchSupport() {
   try {
     const settings = scanner.getRunningTrackSettings();
@@ -824,7 +1183,6 @@ async function checkTorchSupport() {
       torchBtn.style.display = "flex";
     }
   } catch (e) {
-    // Một số phiên bản dùng API khác
     try {
       const caps = scanner.getRunningTrackCameraCapabilities();
       if (caps && caps.torchFeature && caps.torchFeature().isSupported()) {
@@ -838,14 +1196,12 @@ torchBtn.addEventListener("click", async () => {
   if (!scanner) return;
   try {
     torchOn = !torchOn;
-    // Thử API mới trước
     try {
       const caps = scanner.getRunningTrackCameraCapabilities();
       if (caps && caps.torchFeature) {
         await caps.torchFeature().apply(torchOn);
       }
     } catch (e) {
-      // Fallback API cũ
       await scanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
     }
     torchBtn.textContent = torchOn ? "🔦 Tắt" : "🔦";
