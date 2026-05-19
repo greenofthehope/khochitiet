@@ -151,6 +151,7 @@
   .bom-row:last-child { border-bottom: none; }
   .bom-row:active { opacity: .6; }
   .bom-row .bom-info { flex: 1; min-width: 0; }
+  .bom-code-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .bom-row .bom-code { font-family: monospace; font-size: 14px;
     color: var(--accent); font-weight: 700; word-break: break-all; }
   .bom-row .bom-name { font-size: 12px; color: var(--text-dim);
@@ -159,6 +160,47 @@
     white-space: nowrap; text-align: right; }
   .bom-row .bom-qty .ref { display: block; font-size: 10px; color: var(--text-dim);
     font-weight: 400; margin-top: 1px; }
+  .bom-hint { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+
+  /* Phiên bản BOM header */
+  .bom-version-head { display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px; padding-bottom: 8px; border-bottom: 2px solid var(--accent);
+    gap: 10px; flex-wrap: wrap; }
+  .bom-version-title { font-size: 14px; font-weight: 700; color: var(--accent);
+    letter-spacing: .3px; }
+  .bom-version-sub { font-size: 11px; color: var(--text-dim); }
+
+  /* Version badge (dùng trong renderBomAsComp) */
+  .bom-version { display: inline-block; font-size: 10px; font-weight: 700;
+    color: var(--accent); background: rgba(251, 191, 36, 0.15);
+    padding: 1px 6px; border-radius: 4px; letter-spacing: .3px;
+    border: 1px solid rgba(251, 191, 36, 0.3); }
+
+  /* Nhóm vật tư thay thế (alternative group) */
+  .bom-alt-group { margin: 10px -4px 0; padding: 8px 10px;
+    background: rgba(168, 85, 247, 0.06);
+    border: 1px dashed rgba(168, 85, 247, 0.4);
+    border-radius: 10px; }
+  .bom-alt-head { font-size: 11px; font-weight: 700; color: #c4b5fd;
+    letter-spacing: .3px; margin-bottom: 4px;
+    display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .bom-alt-count { font-weight: 400; color: var(--text-dim); font-size: 10px; }
+  .bom-alt-group .bom-row { padding: 6px 0; }
+  .bom-alt-group .bom-row:last-child { border-bottom: none; }
+
+  /* Rank badge trong nhóm thay thế */
+  .bom-rank { display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700;
+    background: var(--bg-card); color: var(--text); flex-shrink: 0; }
+  .bom-rank.rank-1 { background: var(--ok); color: #0b1c14; }   /* phương án chính */
+  .bom-rank.rank-2 { background: var(--accent); color: #1a1a1a; }
+  .bom-rank.rank-3 { background: var(--info); color: white; }
+
+  /* Tag "thay thế" trong renderBomAsComp (cảnh báo NVL đang là alternative) */
+  .bom-alt { display: inline-block; font-size: 10px; color: #c4b5fd;
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    padding: 1px 6px; border-radius: 4px; margin-top: 4px; letter-spacing: .2px; }
 
   .empty { text-align: center; padding: 50px 20px; color: var(--text-dim); }
   .empty .icon { font-size: 40px; margin-bottom: 10px; opacity: .5; }
@@ -308,7 +350,7 @@
    File JSON đặt cùng repo, đường dẫn tương đối
    ========================================================= */
 const DATA_URL = "./ton-kho.json";
-const CACHE_KEY = "ton_kho_cache_v3";   // bumped: structure mới có mara/mb52/bom
+const CACHE_KEY = "ton_kho_cache_v4";   // bumped: BOM có stlal/altGroup/altRank
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const HISTORY_KEY = "ton_kho_history_v1";
 const HISTORY_MAX = 20;
@@ -436,9 +478,10 @@ function normalizeMb52(r) {
 }
 
 function normalizeBom(r) {
-  return {
+  const rec = {
     tp:       String(r.tp       || "").trim().toUpperCase(),
     tpName:   String(r.tpName   || "").trim(),
+    stlal:    String(r.stlal    || "").trim(),
     comp:     String(r.comp     || "").trim().toUpperCase(),
     compName: String(r.compName || "").trim(),
     qty:      Number(r.qty)     || 0,
@@ -446,6 +489,9 @@ function normalizeBom(r) {
     ref:      String(r.ref      || "").trim(),
     scrap:    Number(r.scrap)   || 0,
   };
+  if (r.altRank  !== undefined && r.altRank  !== null && r.altRank  !== "") rec.altRank  = Number(r.altRank)  || 0;
+  if (r.altGroup !== undefined && r.altGroup !== null && r.altGroup !== "") rec.altGroup = r.altGroup;
+  return rec;
 }
 
 function setStatus(kind, text) {
@@ -646,22 +692,12 @@ function renderMatnrResult(result) {
   // ----- BOM section -----
   let bomHtml = '';
   if (bomAsTp.length) {
-    // Mã này là TP → liệt kê các NVL cấu thành (gộp trùng comp)
-    bomHtml += renderBomSection(
-      "📋 Cấu thành (BOM)",
-      "Mã này dùng những NVL sau",
-      groupBomBy(bomAsTp, 'comp'),
-      'comp'
-    );
+    // Mã này là TP → liệt kê các NVL cấu thành, nhóm theo phiên bản BOM (STLAL)
+    bomHtml += renderBomAsTp(bomAsTp);
   }
   if (bomAsComp.length) {
-    // Mã này là NVL → liệt kê các TP sử dụng nó
-    bomHtml += renderBomSection(
-      "🔗 Được dùng cho (BOM)",
-      "Mã này được dùng làm linh kiện cho",
-      groupBomBy(bomAsComp, 'tp'),
-      'tp'
-    );
+    // Mã này là NVL → liệt kê các TP sử dụng nó (kèm thông tin STLAL + Alt:group)
+    bomHtml += renderBomAsComp(bomAsComp);
   }
 
   content.innerHTML = header + binCardsHtml + freeCardsHtml + bomHtml;
@@ -696,50 +732,218 @@ function renderFreeCard(fc, matnr, name) {
   `;
 }
 
-/** Gộp BOM rows trùng key (tp hoặc comp) lại - cộng dồn qty */
-function groupBomBy(rows, key) {
-  const m = new Map();
-  const order = [];
+/* =========================================================
+   BOM rendering with STLAL versions & alternative groups
+   ========================================================= */
+
+/**
+ * Render BOM khi tra mã TP: phải gom theo STLAL (phiên bản BOM).
+ * Trong mỗi phiên bản, gom các dòng cùng altGroup vào 1 cụm "vật tư thay thế",
+ * sắp xếp theo altRank tăng dần.
+ */
+function renderBomAsTp(rows) {
+  // Group by STLAL
+  const byStlal = new Map();
+  const stlalOrder = [];
   for (const r of rows) {
-    const k = r[key];
-    if (!m.has(k)) {
-      m.set(k, { ...r, qty: 0 });
-      order.push(k);
+    const v = r.stlal || "—";
+    if (!byStlal.has(v)) {
+      byStlal.set(v, []);
+      stlalOrder.push(v);
     }
-    m.get(k).qty += r.qty;
+    byStlal.get(v).push(r);
   }
-  return order.map(k => m.get(k));
+  // Sắp xếp version: cố gắng numeric trước
+  stlalOrder.sort((a, b) => {
+    const na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  });
+
+  const versionCount = stlalOrder.length;
+  const totalRows = rows.length;
+  const sectionTitle = versionCount > 1
+    ? `📋 Cấu thành (BOM) · ${versionCount} phiên bản`
+    : `📋 Cấu thành (BOM)`;
+
+  let html = `
+    <div class="section-head">
+      <span class="section-title">${sectionTitle}</span>
+      <span class="section-count">${totalRows} dòng</span>
+    </div>
+  `;
+
+  for (const stlal of stlalOrder) {
+    const items = byStlal.get(stlal);
+    html += renderBomVersionCard(stlal, items, 'comp');
+  }
+  return html;
 }
 
-function renderBomSection(title, hint, items, codeKey) {
-  // codeKey = 'comp' (TP → NVL components) hoặc 'tp' (NVL → TP that use it)
-  const rowsHtml = items.map(b => {
-    const code = b[codeKey];
-    const name = codeKey === 'comp' ? b.compName : b.tpName;
-    const unit = codeKey === 'comp' ? b.unit : 'PCS';   // TP unit thường là PCS
-    const refTxt = (codeKey === 'comp' && b.ref) ? `<span class="ref">vị trí: ${escapeHtml(b.ref)}</span>` : '';
-    return `
-      <div class="bom-row" data-code="${escapeHtml(code)}">
+/**
+ * Render BOM khi tra mã NVL: liệt kê các TP sử dụng nó.
+ * Mỗi dòng cho biết: TP nào, ở phiên bản STLAL nào, và nếu có altGroup thì
+ * đánh dấu "vật tư thay thế nhóm X (ưu tiên Y)".
+ * Gộp các dòng cùng TP + STLAL lại để tránh hiển thị trùng.
+ */
+function renderBomAsComp(rows) {
+  // Key: tp + stlal (giữ riêng theo phiên bản TP để hiển thị rõ)
+  const map = new Map();
+  const order = [];
+  for (const r of rows) {
+    const key = r.tp + "||" + (r.stlal || "");
+    if (!map.has(key)) {
+      map.set(key, {
+        tp: r.tp,
+        tpName: r.tpName,
+        stlal: r.stlal,
+        qty: 0,
+        unit: r.unit,
+        altGroup: r.altGroup,
+        altRank: r.altRank,
+      });
+      order.push(key);
+    }
+    const g = map.get(key);
+    g.qty += r.qty;
+    // Nếu có altGroup ở bất kỳ dòng trùng nào thì giữ
+    if (r.altGroup !== undefined && g.altGroup === undefined) {
+      g.altGroup = r.altGroup;
+      g.altRank = r.altRank;
+    }
+  }
+
+  const items = order.map(k => map.get(k));
+  // Sắp xếp theo TP rồi STLAL
+  items.sort((a, b) => {
+    const c = a.tp.localeCompare(b.tp);
+    if (c !== 0) return c;
+    return String(a.stlal || "").localeCompare(String(b.stlal || ""));
+  });
+
+  // Đếm số TP phân biệt
+  const uniqTp = new Set(items.map(i => i.tp)).size;
+
+  let html = `
+    <div class="section-head">
+      <span class="section-title">🔗 Được dùng cho (BOM)</span>
+      <span class="section-count">${uniqTp} TP · ${items.length} dòng</span>
+    </div>
+    <div class="bom-card">
+      <div class="bom-hint">Mã này được dùng làm linh kiện cho (tap để tra tiếp):</div>
+  `;
+
+  for (const it of items) {
+    const stlalBadge = it.stlal ? `<span class="bom-version">v${escapeHtml(it.stlal)}</span>` : '';
+    const altBadge = (it.altGroup !== undefined)
+      ? `<span class="bom-alt">⇄ thay thế nhóm ${escapeHtml(String(it.altGroup))}${it.altRank ? ' · ưu tiên ' + it.altRank : ''}</span>`
+      : '';
+    html += `
+      <div class="bom-row" data-code="${escapeHtml(it.tp)}">
         <div class="bom-info">
-          <div class="bom-code">${escapeHtml(code)}</div>
-          <div class="bom-name">${escapeHtml(name) || '(không có tên)'}</div>
+          <div class="bom-code-line">
+            <span class="bom-code">${escapeHtml(it.tp)}</span>
+            ${stlalBadge}
+          </div>
+          <div class="bom-name">${escapeHtml(it.tpName) || '(không có tên)'}</div>
+          ${altBadge}
         </div>
         <div class="bom-qty">
-          ${formatQty(b.qty)} ${escapeHtml(unit)}
-          ${refTxt}
+          ${formatQty(it.qty)} ${escapeHtml(it.unit || 'PCS')}
         </div>
       </div>
     `;
-  }).join("");
+  }
+  html += '</div>';
+  return html;
+}
 
-  return `
-    <div class="section-head">
-      <span class="section-title">${title}</span>
-      <span class="section-count">${items.length}</span>
-    </div>
+/**
+ * Render 1 phiên bản BOM (1 STLAL) — chứa các linh kiện, trong đó các nhóm
+ * thay thế (altGroup) được đóng khung riêng.
+ */
+function renderBomVersionCard(stlal, items, codeKey) {
+  // Tách: dòng có altGroup vs không có
+  const noGroup = [];
+  const groups = new Map();   // altGroup -> [rows]
+  const groupOrder = [];
+
+  for (const r of items) {
+    if (r.altGroup === undefined) {
+      noGroup.push(r);
+    } else {
+      const g = String(r.altGroup);
+      if (!groups.has(g)) {
+        groups.set(g, []);
+        groupOrder.push(g);
+      }
+      groups.get(g).push(r);
+    }
+  }
+
+  // Sort altRank trong mỗi group (1 ưu tiên cao nhất → cuối là phương án dự phòng)
+  for (const g of groupOrder) {
+    groups.get(g).sort((a, b) => (a.altRank || 0) - (b.altRank || 0));
+  }
+
+  // Header card: tên phiên bản
+  const versionLabel = (stlal && stlal !== "—") ? `Phiên bản BOM: ${escapeHtml(stlal)}` : `Phiên bản BOM`;
+  const itemCount = items.length;
+  const groupCount = groupOrder.length;
+  const subtitle = groupCount
+    ? `${itemCount} linh kiện · ${groupCount} nhóm thay thế`
+    : `${itemCount} linh kiện`;
+
+  let html = `
     <div class="bom-card">
-      <div style="font-size:12px;color:var(--text-dim);margin-bottom:6px;">${hint} (tap để tra tiếp):</div>
-      ${rowsHtml}
+      <div class="bom-version-head">
+        <span class="bom-version-title">${versionLabel}</span>
+        <span class="bom-version-sub">${subtitle}</span>
+      </div>
+      <div class="bom-hint">Tap vào một mã để tra tiếp:</div>
+  `;
+
+  // Các dòng không có altGroup
+  for (const r of noGroup) {
+    html += renderBomCompRow(r, codeKey);
+  }
+
+  // Các nhóm thay thế
+  for (const g of groupOrder) {
+    const members = groups.get(g);
+    html += `
+      <div class="bom-alt-group">
+        <div class="bom-alt-head">⇄ Nhóm vật tư thay thế ${escapeHtml(g)} <span class="bom-alt-count">${members.length} phương án</span></div>
+        ${members.map(r => renderBomCompRow(r, codeKey, true)).join("")}
+      </div>
+    `;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function renderBomCompRow(r, codeKey, inAltGroup = false) {
+  const code = r[codeKey];
+  const name = codeKey === 'comp' ? r.compName : r.tpName;
+  const unit = r.unit || (codeKey === 'tp' ? 'PCS' : '');
+  const refTxt = (codeKey === 'comp' && r.ref) ? `<span class="ref">vị trí: ${escapeHtml(r.ref)}</span>` : '';
+  const rankBadge = (inAltGroup && r.altRank)
+    ? `<span class="bom-rank rank-${r.altRank}">#${r.altRank}</span>`
+    : '';
+  return `
+    <div class="bom-row" data-code="${escapeHtml(code)}">
+      <div class="bom-info">
+        <div class="bom-code-line">
+          ${rankBadge}
+          <span class="bom-code">${escapeHtml(code)}</span>
+        </div>
+        <div class="bom-name">${escapeHtml(name) || '(không có tên)'}</div>
+      </div>
+      <div class="bom-qty">
+        ${formatQty(r.qty)} ${escapeHtml(unit)}
+        ${refTxt}
+      </div>
     </div>
   `;
 }
